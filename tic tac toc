@@ -1,0 +1,204 @@
+from tkinter import *
+import random
+from collections import deque
+import copy
+
+def bfs_ai_move(board, player): 
+    queue = deque([(board, None)])
+    opponent = 'o' if player == 'x' else 'x'
+
+    while queue:
+        state, move = queue.popleft()
+        if check_winner_state(state) == player:
+            return move
+
+        for r in range(3):
+            for c in range(3):
+                if state[r][c] == "":
+                    new_state = copy.deepcopy(state)
+                    new_state[r][c] = player
+                    queue.append((new_state, move or (r, c)))
+
+    empty = [(r, c) for r in range(3) for c in range(3) if board[r][c] == ""]
+    return random.choice(empty) if empty else None
+
+def ids_ai_move(board, player, max_depth=None):
+    if max_depth is None:
+        max_depth = random.choice([3, 4, 5, 6])
+
+    def dfs(state, depth, max_d, move, directions):
+        winner = check_winner_state(state)
+        if winner == player:
+            return move
+        elif winner or depth == max_d:
+            return None
+
+        for r, c in directions:
+            if state[r][c] == "":
+                new_state = copy.deepcopy(state)
+                new_state[r][c] = player
+                result = dfs(new_state, depth + 1, max_d, move or (r, c), directions)
+                if result:
+                    return result
+        return None
+
+    directions = [(r, c) for r in range(3) for c in range(3)]
+    random.shuffle(directions)
+
+    for depth in range(1, max_depth + 1):
+        move = dfs(board, 0, depth, None, directions)
+        if move:
+            return move
+
+    empty = [(r, c) for r in range(3) for c in range(3) if board[r][c] == ""]
+    return random.choice(empty) if empty else None
+
+players = ["x", "o"]
+player = random.choice(players)
+ai_player = "o"
+against_ai = False
+ai_vs_ai = False
+current_mode = "pvp"
+game_buttons = []
+
+def available_moves():
+    return [(r, c) for r in range(3) for c in range(3) if game_buttons[r][c]["text"] == ""]
+
+def check_winner_state(state):
+    for i in range(3):
+        if state[i][0] == state[i][1] == state[i][2] != "":
+            return state[i][0]
+        if state[0][i] == state[1][i] == state[2][i] != "":
+            return state[0][i]
+    if state[0][0] == state[1][1] == state[2][2] != "":
+        return state[0][0]
+    if state[0][2] == state[1][1] == state[2][0] != "":
+        return state[0][2]
+    if all(cell != "" for row in state for cell in row):
+        return "tie"
+    return False
+
+def check_winner():
+    state = [[game_buttons[r][c]["text"] for c in range(3)] for r in range(3)]
+    return check_winner_state(state)
+
+def next_turn(row, col):
+    global player
+    if game_buttons[row][col]["text"] == "" and not check_winner():
+        game_buttons[row][col]["text"] = player
+        game_buttons[row][col].config(bg="#cce7ff")
+
+        winner = check_winner()
+        if not winner:
+            player = players[0] if player == players[1] else players[1]
+            player_label.config(text=(player + "'s Turn"))
+            if against_ai and player == ai_player:
+                window.after(1000, ai_move)
+            elif ai_vs_ai:
+                window.after(2000, ai_move)
+        else:
+            show_result(winner)
+
+def show_result(winner):
+    if winner == "tie":
+        player_label.config(text="It's a Tie!")
+        for r in range(3):
+            for c in range(3):
+                game_buttons[r][c].config(bg="#ffcccc")
+    else:
+        player_label.config(text=(winner.upper() + " Wins!"))
+        for r in range(3):
+            for c in range(3):
+                color = "#a3f7bf" if game_buttons[r][c]["text"] == winner else "#ffcccc"
+                game_buttons[r][c].config(bg=color)
+
+def ai_move():
+    board = [[game_buttons[r][c]["text"] for c in range(3)] for r in range(3)]
+    if available_moves() and not check_winner():
+        if current_mode == "pvai":
+            row, col = bfs_ai_move(board, player)
+        elif current_mode == "aivai":
+            row, col = ids_ai_move(board, player)
+        else:
+            row, col = random.choice(available_moves())
+        next_turn(row, col)
+        if ai_vs_ai and not check_winner():
+            window.after(2000, ai_move)
+
+def start_new_game():
+    global player
+    player = random.choice(players)
+    player_label.config(text=(player + "'s Turn"))
+
+    for r in range(3):
+        for c in range(3):
+            game_buttons[r][c].config(text="", bg="white")
+
+    if ai_vs_ai or (against_ai and player == ai_player):
+        window.after(1000, ai_move)
+
+def change_mode(new_mode):
+    start_game(new_mode)
+
+def start_game(mode):
+    global against_ai, ai_vs_ai, ai_player, player, current_mode
+    current_mode = mode
+    against_ai = mode in ["pvai", "aivai"]
+    ai_vs_ai = mode == "aivai"
+    select_window.destroy()
+    init_game_window()
+
+def init_game_window():
+    global window, player_label, game_buttons, restart_btn, mode_menu
+    window = Tk()
+    window.title("Tic Tac Toe")
+    window.configure(bg="#f0f0f0")
+
+    player_label = Label(window, text=(player + "'s Turn"), font=("Segoe UI", 30), bg="#f0f0f0", fg="#333")
+    player_label.pack(pady=20)
+
+    restart_btn = Button(window, text="🔄 Restart", font=("Segoe UI", 16), bg="#007acc", fg="white",
+                         relief="raised", bd=3, command=start_new_game)
+    restart_btn.pack(pady=10)
+
+    mode_frame = Frame(window, bg="#f0f0f0")
+    mode_frame.pack(pady=10)
+    Label(mode_frame, text="Game Mode:", font=("Segoe UI", 14), bg="#f0f0f0").pack(side="left")
+    mode_menu = StringVar(window)
+    mode_menu.set(current_mode)
+    OptionMenu(mode_frame, mode_menu, "pvp", "pvai", "aivai", command=change_mode).pack(side="left")
+
+    btns_frame = Frame(window, bg="#f0f0f0")
+    btns_frame.pack(pady=20)
+
+    game_buttons.clear()
+    for row in range(3):
+        row_buttons = []
+        for col in range(3):
+            btn = Button(btns_frame, text="", font=('Segoe UI', 36), width=5, height=2, bg="white", fg="#333",
+                         relief="groove", command=lambda row=row, col=col: next_turn(row, col))
+            btn.grid(row=row, column=col, padx=5, pady=5)
+            row_buttons.append(btn)
+        game_buttons.append(row_buttons)
+
+    if ai_vs_ai or (against_ai and player == ai_player):
+        window.after(1000, ai_move)
+
+    window.mainloop()
+
+select_window = Tk()
+select_window.title("Select Game Mode")
+select_window.configure(bg="#f0f0f0")
+
+Label(select_window, text="Select Game Mode", font=("Segoe UI", 24), bg="#f0f0f0", fg="#333").pack(pady=20)
+
+Button(select_window, text="👤 Player vs Player", font=("Segoe UI", 18), width=20, bg="#4CAF50", fg="white",
+       command=lambda: start_game("pvp")).pack(pady=10)
+
+Button(select_window, text="🤖 Player vs AI", font=("Segoe UI", 18), width=20, bg="#2196F3", fg="white",
+       command=lambda: start_game("pvai")).pack(pady=10)
+
+Button(select_window, text="🤖 AI vs AI", font=("Segoe UI", 18), width=20, bg="#9C27B0", fg="white",
+       command=lambda: start_game("aivai")).pack(pady=10)
+
+select_window.mainloop()
